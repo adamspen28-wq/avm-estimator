@@ -1,32 +1,25 @@
 // Vercel serverless function — runs on the server, never in the browser.
 // Keeps the Anthropic API key secret (it reads it from an environment variable).
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
-
   const { address } = req.body || {};
   if (!address || typeof address !== 'string') {
     return res.status(400).json({ error: 'Missing address' });
   }
-
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: 'Server misconfigured: missing ANTHROPIC_API_KEY' });
   }
-
   const prompt = `You are estimating a rough, ballpark home value. This is for general reference only, not a formal appraisal, so it's fine to reason from general market knowledge, location, property type, and any comps you can find.
-
 Address: ${address}
-
 Return ONLY valid JSON, no other text, in exactly this shape:
 {
   "estimated_low": <number>,
   "estimated_high": <number>,
   "note": "one short sentence on what drove this estimate"
 }`;
-
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -39,11 +32,12 @@ Return ONLY valid JSON, no other text, in exactly this shape:
         model: 'claude-sonnet-5',
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],
-        // Web search intentionally removed — it was causing single requests
-        // to balloon past this account's per-minute token limit.
+        // Web search is capped to 1 use per request (max_uses: 1) so Claude
+        // can't chain multiple searches in a single call — that chaining is
+        // what caused runaway token usage and rate-limit errors before.
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 1 }],
       }),
     });
-
     if (!response.ok) {
       const errText = await response.text();
       console.error('Anthropic API error:', errText);
@@ -56,9 +50,7 @@ Return ONLY valid JSON, no other text, in exactly this shape:
       }
       return res.status(502).json({ error: 'Anthropic API error: ' + detail });
     }
-
     const data = await response.json();
-
     // With web search enabled, the response can contain several content
     // blocks (search steps, tool results, text). We only care about the
     // text blocks, and the final JSON answer lives inside them.
@@ -66,13 +58,11 @@ Return ONLY valid JSON, no other text, in exactly this shape:
       .filter((block) => block.type === 'text')
       .map((block) => block.text);
     const combinedText = textBlocks.join('\n');
-
     const jsonMatch = combinedText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error('No JSON found in model output:', combinedText);
       return res.status(502).json({ error: 'Could not generate an estimate for this address.' });
     }
-
     let result;
     try {
       result = JSON.parse(jsonMatch[0]);
@@ -80,7 +70,6 @@ Return ONLY valid JSON, no other text, in exactly this shape:
       console.error('Failed to parse model output:', jsonMatch[0]);
       return res.status(502).json({ error: 'Could not generate an estimate for this address.' });
     }
-
     return res.status(200).json(result);
   } catch (err) {
     console.error('Estimate error:', err);
