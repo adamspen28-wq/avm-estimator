@@ -39,10 +39,8 @@ Return ONLY valid JSON, no other text, in exactly this shape:
         model: 'claude-sonnet-5',
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],
-        // Web search lets Claude look up real listings/comps instead of guessing
-        // from general knowledge alone. Remove this "tools" block if you'd
-        // rather not use it (it's optional, and using it may cost slightly more).
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        // Web search intentionally removed — it was causing single requests
+        // to balloon past this account's per-minute token limit.
       }),
     });
 
