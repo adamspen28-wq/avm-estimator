@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>What's This Home Worth? — Rough Value Estimator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  :root {
+    --bg: #EEF0F3;
+    --surface: #FFFFFF;
+    --ink: #1B2430;
+    --ink-soft: #5B6472;
+    --accent: #A6763F;
+    --sage: #5C7A63;
+    --rust: #9C4A3B;
+    --line: #D8DBE0;
+    --muted: #97A0AC;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card-wrap { width: 100%; max-width: 560px; }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(28px, 5vw, 38px);
+    text-align: center;
+    margin: 0 0 28px;
+    letter-spacing: -0.01em;
+  }
+  .search-box {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(27, 36, 48, 0.05);
+  }
+  .search-box input {
+    width: 100%;
+    padding: 18px 20px;
+    font-size: 16px;
+    font-family: 'Inter', sans-serif;
+    border: none;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--ink);
+    outline: none;
+  }
+  .search-box input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .search-box input::placeholder { color: var(--muted); }
+
+  .status {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 14px;
+    color: var(--ink-soft);
+    min-height: 20px;
+  }
+
+  .result {
+    margin-top: 20px;
+    background: var(--surface);
+    border-radius: 14px;
+    border-top: 2px dashed var(--line);
+    padding: 28px 24px 20px;
+    animation: reveal 0.35s ease-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .result { animation: none; }
+  }
+  @keyframes reveal {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .result-address {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-bottom: 10px;
+  }
+  .result-range {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: clamp(24px, 6vw, 32px);
+    letter-spacing: -0.01em;
+  }
+  .result-mid {
+    font-size: 13px;
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', monospace;
+    margin-top: 4px;
+  }
+  .result-note {
+    margin-top: 14px;
+    font-size: 14px;
+    color: var(--ink-soft);
+    font-style: italic;
+    line-height: 1.5;
+  }
+  .disclaimer {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+  }
+  .error {
+    margin-top: 20px;
+    background: var(--surface);
+    border-left: 3px solid var(--rust);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: 14px;
+    color: var(--rust);
+  }
+
+  /* Restyle the Google Places autocomplete dropdown to match the app */
+  .pac-container {
+    border-radius: 12px !important;
+    margin-top: 6px;
+    border: 1px solid var(--line) !important;
+    box-shadow: 0 8px 24px rgba(27, 36, 48, 0.1) !important;
+    font-family: 'Inter', sans-serif !important;
+  }
+</style>
+</head>
+<body>
+  <div class="card-wrap">
+    <div class="eyebrow">Rough Estimate Tool</div>
+    <h1>What's this home worth?</h1>
+
+    <div class="search-box">
+      <input id="address-input" type="text" placeholder="Start typing an address..." autocomplete="off" />
+    </div>
+
+    <div class="status" id="status"></div>
+    <div id="result-container"></div>
+  </div>
+
+  <script>
+    const input = document.getElementById('address-input');
+    const statusEl = document.getElementById('status');
+    const resultContainer = document.getElementById('result-container');
+
+    function formatCurrency(n) {
+      if (typeof n !== 'number' || Number.isNaN(n)) return '—';
+      return '$' + Math.round(n).toLocaleString('en-US');
+    }
+
+    function showLoading() {
+      statusEl.textContent = 'Estimating...';
+      resultContainer.innerHTML = '';
+    }
+
+    function showError(message) {
+      statusEl.textContent = '';
+      resultContainer.innerHTML = '<div class="error">' + message + '</div>';
+    }
+
+    function showResult(address, data) {
+      statusEl.textContent = '';
+      const mid = (data.estimated_low + data.estimated_high) / 2;
+      resultContainer.innerHTML =
+        '<div class="result">' +
+          '<div class="result-address">' + address + '</div>' +
+          '<div class="result-range">' + formatCurrency(data.estimated_low) + ' – ' + formatCurrency(data.estimated_high) + '</div>' +
+          '<div class="result-mid">Midpoint: ' + formatCurrency(mid) + '</div>' +
+          '<div class="result-note">' + (data.note || '') + '</div>' +
+          '<div class="disclaimer">Rough AI-generated estimate — not an appraisal</div>' +
+        '</div>';
+    }
+
+    async function getEstimate(address) {
+      showLoading();
+      try {
+        const res = await fetch('/api/estimate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || 'Something went wrong. Please try again.');
+          return;
+        }
+        if (typeof data.estimated_low !== 'number' || typeof data.estimated_high !== 'number') {
+          showError('Not enough info to estimate this address.');
+          return;
+        }
+        showResult(address, data);
+      } catch (err) {
+        showError('Could not reach the estimate service. Check your connection and try again.');
+      }
+    }
+
+    function initAutocomplete() {
+      const autocomplete = new google.maps.places.Autocomplete(input, {
+        types: ['address'],
+      });
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+        const address = place.formatted_address || input.value;
+        if (address) getEstimate(address);
+      });
+    }
+    window.initAutocomplete = initAutocomplete;
+  </script>
+
+  <!-- Replace YOUR_GOOGLE_MAPS_API_KEY below with your real key (see README.md) -->
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places&callback=initAutocomplete"
+    async
+    defer
+  ></script>
+</body>
+</html>
