@@ -1,7 +1,7 @@
 // Vercel serverless function — runs on the server, never in the browser.
 // Keeps the Anthropic API key secret (it reads it from an environment variable).
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -39,17 +39,22 @@ Return ONLY valid JSON, no other text, in exactly this shape:
         model: 'claude-sonnet-5',
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],
-        // Web search lets Claude look up real listings/comps instead of guessing
-        // from general knowledge alone. Remove this "tools" block if you'd
-        // rather not use it (it's optional, and using it may cost slightly more).
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        // Web search intentionally removed — it was causing single requests
+        // to balloon past this account's per-minute token limit.
       }),
     });
 
     if (!response.ok) {
       const errText = await response.text();
       console.error('Anthropic API error:', errText);
-      return res.status(502).json({ error: 'Estimate service unavailable. Try again shortly.' });
+      let detail = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        detail = (parsed.error && parsed.error.message) || errText;
+      } catch (e) {
+        // errText wasn't JSON — just use it as-is
+      }
+      return res.status(502).json({ error: 'Anthropic API error: ' + detail });
     }
 
     const data = await response.json();
