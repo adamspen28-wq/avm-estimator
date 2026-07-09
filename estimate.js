@@ -49,7 +49,14 @@ Return ONLY valid JSON, no other text, in exactly this shape:
     if (!response.ok) {
       const errText = await response.text();
       console.error('Anthropic API error:', errText);
-      return res.status(502).json({ error: 'Estimate service unavailable. Try again shortly.' });
+      let detail = errText;
+      try {
+        const parsed = JSON.parse(errText);
+        detail = (parsed.error && parsed.error.message) || errText;
+      } catch (e) {
+        // errText wasn't JSON — just use it as-is
+      }
+      return res.status(502).json({ error: 'Anthropic API error: ' + detail });
     }
 
     const data = await response.json();
